@@ -4,8 +4,9 @@ dockerfilePath = "Dockerfile"
 
 [deploy]
 # Override any stale dashboard start command (e.g. a leftover `pnpm ... dev`)
-# so the Dockerfile's nginx entrypoint runs to serve the built static site.
-startCommand = "echo \"DIAG PORT=[$PORT]\"; envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf; echo '---DIAG CONFIG START---'; cat /etc/nginx/conf.d/default.conf; echo '---DIAG CONFIG END---'; nginx -t; nginx -g 'daemon off;'"
+# with a single-token script so Railway doesn't mangle shell syntax; the
+# script renders the nginx config and serves the built static site.
+startCommand = "/docker-start.sh"
 healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
