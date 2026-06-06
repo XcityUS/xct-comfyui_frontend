@@ -12,4 +12,10 @@ envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/con
 # Fail fast with a clear message if the generated config is invalid.
 nginx -t
 
+echo "DIAG2 PORT=[${PORT}]"
+echo "DIAG2 LISTEN LINES:"
+grep -i listen /etc/nginx/conf.d/default.conf || true
+echo "DIAG2 RAILWAY VARS:"
+env | grep -iE "PORT|RAILWAY_TCP|RAILWAY_PRIVATE" | sed 's/=.*/=<set>/' || true
+
 exec nginx -g 'daemon off;'
