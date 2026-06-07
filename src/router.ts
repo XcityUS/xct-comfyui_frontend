@@ -150,7 +150,7 @@ if (isXctAuth) {
     await auth.initialize()
 
     if (to.name === 'xct-login') {
-      return auth.isAuthenticated ? next({ path: '/' }) : next()
+      return auth.isAuthenticated ? next({ name: 'xct-create' }) : next()
     }
 
     if (!auth.isAuthenticated) {
@@ -159,6 +159,12 @@ if (isXctAuth) {
           ? undefined
           : { redirect: encodeURIComponent(to.fullPath) }
       return next({ name: 'xct-login', query })
+    }
+
+    // This deployment has no ComfyUI server, so the graph workspace at '/'
+    // cannot initialize. Land authenticated users on the generation page.
+    if (to.path === '/') {
+      return next({ name: 'xct-create' })
     }
 
     return next()
