@@ -31,7 +31,9 @@ vi.mock('@/platform/xcity/composables/useMediaGeneration', async () => {
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 
 function renderView() {
-  return render(MediaGeneratorView, { global: { stubs: { Button: true } } })
+  return render(MediaGeneratorView, {
+    global: { stubs: { Button: true, BaseViewTemplate: true } }
+  })
 }
 
 describe('MediaGeneratorView', () => {
