@@ -2188,6 +2188,26 @@
       "member": "Member"
     }
   },
+  "xctAuth": {
+    "title": "Sign in",
+    "subtitle": "Sign in to continue",
+    "signUpTitle": "Create your account",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "Your password",
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "continueWithGoogle": "Continue with Google",
+    "or": "or",
+    "noAccount": "Don't have an account?",
+    "haveAccount": "Already have an account?",
+    "forgotPassword": "Forgot password?",
+    "passwordResetSent": "Password reset email sent. Check your inbox.",
+    "checkEmail": "Account created. Check your email to confirm, then sign in.",
+    "missingEmail": "Enter your email first.",
+    "genericError": "Something went wrong. Please try again."
+  },
   "auth": {
     "apiKey": {
       "title": "API Key",

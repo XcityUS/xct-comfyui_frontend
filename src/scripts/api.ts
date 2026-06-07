@@ -6,6 +6,7 @@ import { trimEnd } from 'es-toolkit'
 import { ref } from 'vue'
 
 import defaultClientFeatureFlags from '@/config/clientFeatureFlags.json' with { type: 'json' }
+import { isXctAuth } from '@/config/xctAuth'
 import { getDevOverride } from '@/utils/devFeatureFlagOverride'
 import type {
   ModelFile,
@@ -434,11 +435,17 @@ export class ComfyApi extends EventTarget {
     const headers: HeadersInit = options?.headers ?? {}
 
     if (isCloud) {
-      await this.waitForAuthInitialization()
+      if (!isXctAuth) {
+        await this.waitForAuthInitialization()
+      }
 
-      // Get Firebase JWT token if user is logged in
       const getAuthHeaderIfAvailable = async (): Promise<AuthHeader | null> => {
         try {
+          if (isXctAuth) {
+            const { useXctAuthStore } =
+              await import('@/platform/xctauth/stores/xctAuthStore')
+            return await useXctAuthStore().getAuthHeader()
+          }
           const authStore = await this.getAuthStore()
           return authStore ? await authStore.getAuthHeader() : null
         } catch (error) {
