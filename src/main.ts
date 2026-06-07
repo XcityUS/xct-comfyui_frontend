@@ -13,7 +13,7 @@ import { VueFire, VueFireAuth } from 'vuefire'
 
 import { setAssertReporter } from '@/base/assert'
 import { getFirebaseConfig } from '@/config/firebase'
-import { isXctAuth } from '@/config/xctAuth'
+import { isXcityApp } from '@/config/xcity'
 import { flushProxyWidgetMigration } from '@/core/graph/subgraph/migration/proxyWidgetMigration'
 import { autoExposeKnownPreviewNodes } from '@/core/graph/subgraph/promotionUtils'
 import { LGraph } from '@/lib/litegraph/src/litegraph'
@@ -54,7 +54,7 @@ const ComfyUIPreset = definePreset(Aura, {
   }
 })
 
-const firebaseApp = isXctAuth ? null : initializeApp(getFirebaseConfig())
+const firebaseApp = isXcityApp ? null : initializeApp(getFirebaseConfig())
 
 const app = createApp(App)
 const pinia = createPinia()

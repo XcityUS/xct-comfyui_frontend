@@ -99,7 +99,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Get auth from VueFire and listen for auth state changes.
   // `useFirebaseAuth()` returns null when VueFire is not installed (e.g. the
-  // xct-auth distribution, which never initializes Firebase). The store then
+  // xcity sub-product build, which never initializes Firebase). The store then
   // stays inert: no listeners, getAuthHeader() falls through to the API key.
   const auth = useFirebaseAuth()
   if (auth) {

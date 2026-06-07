@@ -2188,25 +2188,17 @@
       "member": "Member"
     }
   },
-  "xctAuth": {
-    "title": "Sign in",
-    "subtitle": "Sign in to continue",
-    "signUpTitle": "Create your account",
-    "email": "Email",
-    "emailPlaceholder": "you@example.com",
-    "password": "Password",
-    "passwordPlaceholder": "Your password",
-    "signIn": "Sign in",
-    "signUp": "Sign up",
-    "continueWithGoogle": "Continue with Google",
-    "or": "or",
-    "noAccount": "Don't have an account?",
-    "haveAccount": "Already have an account?",
-    "forgotPassword": "Forgot password?",
-    "passwordResetSent": "Password reset email sent. Check your inbox.",
-    "checkEmail": "Account created. Check your email to confirm, then sign in.",
-    "missingEmail": "Enter your email first.",
-    "genericError": "Something went wrong. Please try again."
+  "mediaGen": {
+    "title": "Create",
+    "modeVideo": "Video",
+    "modeImage": "Image",
+    "model": "Model",
+    "promptPlaceholder": "Describe what you want to create…",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "cancel": "Cancel",
+    "noModels": "No models available",
+    "resultEmpty": "Your generated media will appear here."
   },
   "auth": {
     "apiKey": {

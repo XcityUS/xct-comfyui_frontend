@@ -8,13 +8,13 @@ import {
 import type { RouteLocationNormalized } from 'vue-router'
 
 import { useFeatureFlags } from '@/composables/useFeatureFlags'
-import { isXctAuth } from '@/config/xctAuth'
+import { isXcityApp } from '@/config/xcity'
 import { isCloud, isDesktop } from '@/platform/distribution/types'
 import { useTelemetry } from '@/platform/telemetry'
+import { getXcityIdentity } from '@/platform/xcity/xcityIdentity'
 import { useDialogService } from '@/services/dialogService'
 import { useAuthStore } from '@/stores/authStore'
 import { useUserStore } from '@/stores/userStore'
-import { useXctAuthStore } from '@/platform/xctauth/stores/xctAuthStore'
 import LayoutDefault from '@/views/layouts/LayoutDefault.vue'
 
 import { captureOAuthRequestId } from '@/platform/cloud/oauth/oauthState'
@@ -60,12 +60,13 @@ const router = createRouter({
       createWebHistory(basePath),
   routes: [
     ...(isCloud ? cloudOnboardingRoutes : []),
-    ...(isXctAuth
+    ...(isXcityApp
       ? [
           {
-            path: '/login',
-            name: 'xct-login',
-            component: () => import('@/platform/xctauth/views/XctLoginView.vue')
+            path: '/create',
+            name: 'xcity-create',
+            component: () =>
+              import('@/platform/xcity/views/MediaGeneratorView.vue')
           }
         ]
       : []),
@@ -138,28 +139,27 @@ router.afterEach(() => {
   trackPageView()
 })
 
-if (isXctAuth) {
+if (isXcityApp) {
   router.beforeEach(async (to, _from, next) => {
-    const auth = useXctAuthStore()
-    await auth.initialize()
-
-    if (to.name === 'xct-login') {
-      return auth.isAuthenticated ? next({ path: '/' }) : next()
+    try {
+      await getXcityIdentity()
+    } catch {
+      // Not signed in: getXcityIdentity is redirecting the browser to
+      // xcity-home login. Halt this navigation.
+      return next(false)
     }
 
-    if (!auth.isAuthenticated) {
-      const query =
-        to.fullPath === '/'
-          ? undefined
-          : { redirect: encodeURIComponent(to.fullPath) }
-      return next({ name: 'xct-login', query })
+    // No ComfyUI server backs this deployment; the graph workspace at '/'
+    // cannot initialize. Land users on the generation page.
+    if (to.path === '/') {
+      return next({ name: 'xcity-create' })
     }
 
     return next()
   })
 }
 
-if (isCloud && !isXctAuth) {
+if (isCloud && !isXcityApp) {
   const { flags } = useFeatureFlags()
   const PUBLIC_ROUTE_NAMES = new Set([
     'cloud-login',

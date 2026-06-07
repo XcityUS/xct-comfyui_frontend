@@ -806,7 +806,7 @@ describe('useAuthStore', () => {
   })
 })
 
-describe('useAuthStore without Firebase (xct-auth distribution)', () => {
+describe('useAuthStore without Firebase (xcity sub-product)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     vi.mocked(useDialogService, { partial: true }).mockReturnValue({
