@@ -133,6 +133,9 @@ const canGenerate = computed(
   () => !!prompt.value.trim() && !!selectedModel.value && !isGenerating.value
 )
 
-onMounted(loadModels)
+onMounted(() => {
+  document.getElementById('splash-loader')?.remove()
+  void loadModels()
+})
 onUnmounted(revokeVideo)
 </script>
