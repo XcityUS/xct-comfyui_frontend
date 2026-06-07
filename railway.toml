@@ -1,6 +1,10 @@
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
+# The Dockerfile builds from the whole repo (`COPY . .` + `pnpm build:cloud`),
+# so any tracked file can change the output. Watch everything rather than a
+# curated list, which would silently skip relevant changes.
+watchPatterns = ["**"]
 
 [deploy]
 # Override any stale dashboard start command (e.g. a leftover `pnpm ... dev`)
