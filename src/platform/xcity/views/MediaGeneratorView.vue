@@ -1,6 +1,21 @@
 <template>
   <BaseViewTemplate dark>
     <div class="flex size-full max-w-2xl flex-col gap-4 overflow-y-auto p-4">
+      <div
+        v-if="loadFailed"
+        class="border-error-foreground/30 bg-error-foreground/10 flex flex-col items-start gap-2 rounded-lg border p-4"
+      >
+        <p class="text-error-foreground my-0 font-semibold">
+          {{ t('mediaGen.loadFailedTitle') }}
+        </p>
+        <p class="my-0 text-sm text-muted-foreground">
+          {{ t('mediaGen.loadFailedHint') }}
+        </p>
+        <Button size="sm" variant="secondary" @click="loadModels">
+          {{ t('mediaGen.retry') }}
+        </Button>
+      </div>
+
       <div class="flex items-center gap-2">
         <Button
           v-for="option in modes"
@@ -119,6 +134,7 @@ const {
   isGenerating,
   progress,
   error,
+  loadFailed,
   imageResults,
   videoUrl,
   loadModels,

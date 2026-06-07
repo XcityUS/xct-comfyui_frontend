@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   XcityAuthError,
+  XcityServiceError,
   clearXcityIdentity,
   getXcityIdentity
 } from './xcityIdentity'
@@ -72,5 +73,21 @@ describe('xcityIdentity', () => {
       'https://xcity.one/login?return=' +
         encodeURIComponent('https://motion.xcity.one/create')
     )
+  })
+
+  it('throws XcityServiceError without redirecting on a non-401 failure', async () => {
+    const original = window.location.href
+    fetchMock.mockResolvedValue(new Response('', { status: 502 }))
+
+    await expect(getXcityIdentity()).rejects.toBeInstanceOf(XcityServiceError)
+    expect(window.location.href).toBe(original)
+  })
+
+  it('throws XcityServiceError when the identity service is unreachable', async () => {
+    const original = window.location.href
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'))
+
+    await expect(getXcityIdentity()).rejects.toBeInstanceOf(XcityServiceError)
+    expect(window.location.href).toBe(original)
   })
 })
