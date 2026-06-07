@@ -8,11 +8,13 @@ import {
 import type { RouteLocationNormalized } from 'vue-router'
 
 import { useFeatureFlags } from '@/composables/useFeatureFlags'
+import { isXctAuth } from '@/config/xctAuth'
 import { isCloud, isDesktop } from '@/platform/distribution/types'
 import { useTelemetry } from '@/platform/telemetry'
 import { useDialogService } from '@/services/dialogService'
 import { useAuthStore } from '@/stores/authStore'
 import { useUserStore } from '@/stores/userStore'
+import { useXctAuthStore } from '@/platform/xctauth/stores/xctAuthStore'
 import LayoutDefault from '@/views/layouts/LayoutDefault.vue'
 
 import { captureOAuthRequestId } from '@/platform/cloud/oauth/oauthState'
@@ -58,6 +60,15 @@ const router = createRouter({
       createWebHistory(basePath),
   routes: [
     ...(isCloud ? cloudOnboardingRoutes : []),
+    ...(isXctAuth
+      ? [
+          {
+            path: '/login',
+            name: 'xct-login',
+            component: () => import('@/platform/xctauth/views/XctLoginView.vue')
+          }
+        ]
+      : []),
     {
       path: '/',
       component: LayoutDefault,
@@ -127,7 +138,28 @@ router.afterEach(() => {
   trackPageView()
 })
 
-if (isCloud) {
+if (isXctAuth) {
+  router.beforeEach(async (to, _from, next) => {
+    const auth = useXctAuthStore()
+    await auth.initialize()
+
+    if (to.name === 'xct-login') {
+      return auth.isAuthenticated ? next({ path: '/' }) : next()
+    }
+
+    if (!auth.isAuthenticated) {
+      const query =
+        to.fullPath === '/'
+          ? undefined
+          : { redirect: encodeURIComponent(to.fullPath) }
+      return next({ name: 'xct-login', query })
+    }
+
+    return next()
+  })
+}
+
+if (isCloud && !isXctAuth) {
   const { flags } = useFeatureFlags()
   const PUBLIC_ROUTE_NAMES = new Set([
     'cloud-login',

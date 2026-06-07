@@ -23,6 +23,7 @@ declare global {
     VITE_STAGING_PLATFORM_BASE_URL?: string
     VITE_XCT_AUTH_URL?: string
     VITE_LITELLM_BASE_URL?: string
+    VITE_AUTH_PROVIDER?: 'firebase' | 'xct'
   }
 
   interface ImportMeta {
