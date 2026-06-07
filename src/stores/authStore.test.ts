@@ -805,3 +805,35 @@ describe('useAuthStore', () => {
     })
   })
 })
+
+describe('useAuthStore without Firebase (xct-auth distribution)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    vi.mocked(useDialogService, { partial: true }).mockReturnValue({
+      showErrorDialog: vi.fn()
+    })
+    vi.mocked(vuefire.useFirebaseAuth).mockReturnValue(
+      null as unknown as ReturnType<typeof vuefire.useFirebaseAuth>
+    )
+    mockApiKeyGetAuthHeader.mockReturnValue(null)
+    setActivePinia(createTestingPinia({ stubActions: false }))
+  })
+
+  it('instantiates inertly without attaching Firebase listeners', () => {
+    expect(() => useAuthStore()).not.toThrow()
+    expect(firebaseAuth.onAuthStateChanged).not.toHaveBeenCalled()
+    expect(firebaseAuth.onIdTokenChanged).not.toHaveBeenCalled()
+  })
+
+  it('falls through to no auth header when no API key exists', async () => {
+    const store = useAuthStore()
+
+    expect(await store.getAuthHeader()).toBeNull()
+  })
+
+  it('throws when a Firebase auth action is attempted', async () => {
+    const store = useAuthStore()
+
+    await expect(store.login('a@b.c', 'pw')).rejects.toThrow()
+  })
+})
