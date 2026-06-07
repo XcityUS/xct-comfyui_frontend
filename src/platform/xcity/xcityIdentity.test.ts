@@ -44,7 +44,7 @@ describe('xcityIdentity', () => {
     const id = await getXcityIdentity()
 
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('https://www.xcity.one/api/me/litellm-key')
+    expect(url).toBe('https://xcity.one/api/me/litellm-key')
     expect(init.credentials).toBe('include')
     expect(id).toEqual(ENVELOPE)
   })
@@ -69,7 +69,7 @@ describe('xcityIdentity', () => {
 
     await expect(getXcityIdentity()).rejects.toBeInstanceOf(XcityAuthError)
     expect(window.location.href).toBe(
-      'https://www.xcity.one/login?return=' +
+      'https://xcity.one/login?return=' +
         encodeURIComponent('https://motion.xcity.one/create')
     )
   })
