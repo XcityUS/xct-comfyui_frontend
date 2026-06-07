@@ -1,4 +1,4 @@
-const DEFAULT_XCITY_HOME_URL = 'https://www.xcity.one'
+const DEFAULT_XCITY_HOME_URL = 'https://xcity.one'
 
 /**
  * When true, this build runs as an xcity.one sub-product (e.g. motion.xcity.one):
