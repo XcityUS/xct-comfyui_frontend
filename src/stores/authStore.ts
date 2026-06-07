@@ -97,38 +97,40 @@ export const useAuthStore = defineStore('auth', () => {
   const userEmail = computed(() => currentUser.value?.email)
   const userId = computed(() => currentUser.value?.uid)
 
-  // Get auth from VueFire and listen for auth state changes
-  // From useFirebaseAuth docs:
-  // Retrieves the Firebase Auth instance. Returns `null` on the server.
-  // When using this function on the client in TypeScript, you can force the type with `useFirebaseAuth()!`.
-  const auth = useFirebaseAuth()!
-  // Set persistence to localStorage (works in both browser and Electron)
-  void setPersistence(auth, browserLocalPersistence)
+  // Get auth from VueFire and listen for auth state changes.
+  // `useFirebaseAuth()` returns null when VueFire is not installed (e.g. the
+  // xcity sub-product build, which never initializes Firebase). The store then
+  // stays inert: no listeners, getAuthHeader() falls through to the API key.
+  const auth = useFirebaseAuth()
+  if (auth) {
+    // Set persistence to localStorage (works in both browser and Electron)
+    void setPersistence(auth, browserLocalPersistence)
 
-  onAuthStateChanged(auth, (user) => {
-    currentUser.value = user
-    isInitialized.value = true
-    if (user === null) {
-      lastTokenUserId.value = null
-      useWorkspaceAuthStore().clearWorkspaceContext()
-    }
-
-    // Reset balance when auth state changes
-    balance.value = null
-    lastBalanceUpdateTime.value = null
-  })
-
-  // Listen for token refresh events
-  onIdTokenChanged(auth, (user) => {
-    if (user && isCloud) {
-      // Skip initial token change
-      if (lastTokenUserId.value !== user.uid) {
-        lastTokenUserId.value = user.uid
-        return
+    onAuthStateChanged(auth, (user) => {
+      currentUser.value = user
+      isInitialized.value = true
+      if (user === null) {
+        lastTokenUserId.value = null
+        useWorkspaceAuthStore().clearWorkspaceContext()
       }
-      tokenRefreshTrigger.value++
-    }
-  })
+
+      // Reset balance when auth state changes
+      balance.value = null
+      lastBalanceUpdateTime.value = null
+    })
+
+    // Listen for token refresh events
+    onIdTokenChanged(auth, (user) => {
+      if (user && isCloud) {
+        // Skip initial token change
+        if (lastTokenUserId.value !== user.uid) {
+          lastTokenUserId.value = user.uid
+          return
+        }
+        tokenRefreshTrigger.value++
+      }
+    })
+  }
 
   const getIdToken = async (): Promise<string | undefined> => {
     if (!currentUser.value) return
@@ -298,6 +300,10 @@ export const useAuthStore = defineStore('auth', () => {
       createCustomer?: boolean
     } = {}
   ): Promise<T> => {
+    if (!auth) {
+      throw new AuthStoreError('Firebase auth is not available')
+    }
+
     loading.value = true
 
     try {

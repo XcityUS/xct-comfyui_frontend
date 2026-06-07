@@ -21,6 +21,8 @@ declare global {
     VITE_APP_VERSION?: string
     VITE_STAGING_API_BASE_URL?: string
     VITE_STAGING_PLATFORM_BASE_URL?: string
+    VITE_XCITY_APP?: string
+    VITE_XCITY_HOME_URL?: string
   }
 
   interface ImportMeta {

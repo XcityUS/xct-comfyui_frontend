@@ -13,6 +13,7 @@ import { VueFire, VueFireAuth } from 'vuefire'
 
 import { setAssertReporter } from '@/base/assert'
 import { getFirebaseConfig } from '@/config/firebase'
+import { isXcityApp } from '@/config/xcity'
 import { flushProxyWidgetMigration } from '@/core/graph/subgraph/migration/proxyWidgetMigration'
 import { autoExposeKnownPreviewNodes } from '@/core/graph/subgraph/promotionUtils'
 import { LGraph } from '@/lib/litegraph/src/litegraph'
@@ -53,7 +54,7 @@ const ComfyUIPreset = definePreset(Aura, {
   }
 })
 
-const firebaseApp = initializeApp(getFirebaseConfig())
+const firebaseApp = isXcityApp ? null : initializeApp(getFirebaseConfig())
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -131,10 +132,13 @@ app
   .use(ToastService)
   .use(pinia)
   .use(i18n)
-  .use(VueFire, {
+
+if (firebaseApp) {
+  app.use(VueFire, {
     firebaseApp,
     modules: [VueFireAuth()]
   })
+}
 
 LGraph.proxyWidgetMigrationFlush = (hostNode, nodeData) =>
   flushProxyWidgetMigration({

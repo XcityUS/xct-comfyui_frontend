@@ -2188,6 +2188,18 @@
       "member": "Member"
     }
   },
+  "mediaGen": {
+    "title": "Create",
+    "modeVideo": "Video",
+    "modeImage": "Image",
+    "model": "Model",
+    "promptPlaceholder": "Describe what you want to create…",
+    "generate": "Generate",
+    "generating": "Generating…",
+    "cancel": "Cancel",
+    "noModels": "No models available",
+    "resultEmpty": "Your generated media will appear here."
+  },
   "auth": {
     "apiKey": {
       "title": "API Key",
