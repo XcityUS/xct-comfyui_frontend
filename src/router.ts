@@ -66,6 +66,12 @@ const router = createRouter({
             path: '/login',
             name: 'xct-login',
             component: () => import('@/platform/xctauth/views/XctLoginView.vue')
+          },
+          {
+            path: '/create',
+            name: 'xct-create',
+            component: () =>
+              import('@/platform/xctauth/views/MediaGeneratorView.vue')
           }
         ]
       : []),
