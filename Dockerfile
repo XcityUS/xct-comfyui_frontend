@@ -16,6 +16,14 @@ ENV DISTRIBUTION=cloud
 ENV GENERATE_SOURCEMAP=false
 ENV ENABLE_MINIFY=true
 
+# Vite bakes import.meta.env.VITE_* at build time. Railway supplies a matching
+# build arg for each service variable, so declare them and promote to ENV so
+# `pnpm build:cloud` sees them in process.env.
+ARG VITE_XCITY_APP
+ARG VITE_XCITY_HOME_URL
+ENV VITE_XCITY_APP=$VITE_XCITY_APP
+ENV VITE_XCITY_HOME_URL=$VITE_XCITY_HOME_URL
+
 RUN pnpm build:cloud
 
 FROM nginx:stable-alpine
