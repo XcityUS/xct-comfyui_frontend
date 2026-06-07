@@ -5,7 +5,9 @@ import { useAssetsSidebarTab } from '@/composables/sidebarTabs/useAssetsSidebarT
 import { useJobHistorySidebarTab } from '@/composables/sidebarTabs/useJobHistorySidebarTab'
 import { useModelLibrarySidebarTab } from '@/composables/sidebarTabs/useModelLibrarySidebarTab'
 import { useNodeLibrarySidebarTab } from '@/composables/sidebarTabs/useNodeLibrarySidebarTab'
+import { isXctAuth } from '@/config/xctAuth'
 import { t, te } from '@/i18n'
+import { useMediaGeneratorSidebarTab } from '@/platform/xctauth/composables/useMediaGeneratorSidebarTab'
 import { useSettingStore } from '@/platform/settings/settingStore'
 import { useAppsSidebarTab } from '@/platform/workflow/management/composables/useAppsSidebarTab'
 import { useWorkflowsSidebarTab } from '@/platform/workflow/management/composables/useWorkflowsSidebarTab'
@@ -131,6 +133,10 @@ export const useSidebarTabStore = defineStore('sidebarTab', () => {
       () => settingStore.get('Comfy.Queue.QPOV2'),
       (enabled) => syncJobHistoryTab(enabled)
     )
+
+    if (isXctAuth) {
+      registerSidebarTab(useMediaGeneratorSidebarTab(), { prepend: true })
+    }
 
     registerSidebarTab(useAssetsSidebarTab())
     registerSidebarTab(useNodeLibrarySidebarTab())
