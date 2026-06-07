@@ -19,6 +19,21 @@ export class XcityAuthError extends Error {
   }
 }
 
+/**
+ * A non-auth failure of the identity service (unreachable, 5xx, malformed) — as
+ * opposed to {@link XcityAuthError}, which means "not signed in" and triggers a
+ * login redirect. Callers should surface this to the user, not redirect.
+ */
+export class XcityServiceError extends Error {
+  readonly status: number | null
+
+  constructor(message: string, status: number | null = null) {
+    super(message)
+    this.name = 'XcityServiceError'
+    this.status = status
+  }
+}
+
 const STORAGE_KEY = 'xcity_identity_v1'
 const TTL_MS = 5 * 60 * 1000
 
@@ -66,16 +81,24 @@ export async function getXcityIdentity(
     if (cached) return cached
   }
 
-  const response = await fetch(`${getXcityHomeUrl()}/api/me/litellm-key`, {
-    credentials: 'include'
-  })
+  let response: Response
+  try {
+    response = await fetch(`${getXcityHomeUrl()}/api/me/litellm-key`, {
+      credentials: 'include'
+    })
+  } catch {
+    throw new XcityServiceError('Could not reach the xcity identity service')
+  }
 
   if (response.status === 401) {
     redirectToLogin()
     throw new XcityAuthError('Not signed in to xcity.one')
   }
   if (!response.ok) {
-    throw new XcityAuthError(`xcity identity failed: ${response.status}`)
+    throw new XcityServiceError(
+      `xcity identity failed: ${response.status}`,
+      response.status
+    )
   }
 
   const identity = (await response.json()) as XcityIdentity

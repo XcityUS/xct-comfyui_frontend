@@ -34,6 +34,7 @@ export function useMediaGeneration() {
   const isGenerating = ref(false)
   const progress = ref(0)
   const error = ref('')
+  const loadFailed = ref(false)
   const imageResults = ref<string[]>([])
   const videoUrl = ref<string | null>(null)
 
@@ -47,12 +48,14 @@ export function useMediaGeneration() {
   }
 
   async function loadModels() {
+    loadFailed.value = false
     try {
       models.value = await getAvailableModels()
       if (!selectedModel.value && models.value.length) {
         selectedModel.value = models.value[0]
       }
     } catch (e) {
+      loadFailed.value = true
       error.value = messageOf(e)
     }
   }
@@ -120,6 +123,7 @@ export function useMediaGeneration() {
     isGenerating,
     progress,
     error,
+    loadFailed,
     imageResults,
     videoUrl,
     loadModels,

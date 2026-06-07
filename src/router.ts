@@ -11,7 +11,10 @@ import { useFeatureFlags } from '@/composables/useFeatureFlags'
 import { isXcityApp } from '@/config/xcity'
 import { isCloud, isDesktop } from '@/platform/distribution/types'
 import { useTelemetry } from '@/platform/telemetry'
-import { getXcityIdentity } from '@/platform/xcity/xcityIdentity'
+import {
+  XcityAuthError,
+  getXcityIdentity
+} from '@/platform/xcity/xcityIdentity'
 import { useDialogService } from '@/services/dialogService'
 import { useAuthStore } from '@/stores/authStore'
 import { useUserStore } from '@/stores/userStore'
@@ -143,10 +146,12 @@ if (isXcityApp) {
   router.beforeEach(async (to, _from, next) => {
     try {
       await getXcityIdentity()
-    } catch {
+    } catch (e) {
       // Not signed in: getXcityIdentity is redirecting the browser to
-      // xcity-home login. Halt this navigation.
-      return next(false)
+      // xcity-home login. Halt this navigation. Any other failure (service
+      // down, key provisioning) falls through so /create can render and show a
+      // clear error instead of a blank screen.
+      if (e instanceof XcityAuthError) return next(false)
     }
 
     // No ComfyUI server backs this deployment; the graph workspace at '/'

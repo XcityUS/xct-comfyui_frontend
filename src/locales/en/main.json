@@ -2198,7 +2198,10 @@
     "generating": "Generating…",
     "cancel": "Cancel",
     "noModels": "No models available",
-    "resultEmpty": "Your generated media will appear here."
+    "resultEmpty": "Your generated media will appear here.",
+    "loadFailedTitle": "Couldn't load the generator",
+    "loadFailedHint": "The AI service is temporarily unavailable. Please try again in a moment.",
+    "retry": "Retry"
   },
   "auth": {
     "apiKey": {
