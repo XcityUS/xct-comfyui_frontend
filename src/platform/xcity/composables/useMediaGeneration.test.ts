@@ -1,87 +1,69 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useMediaGeneration } from './useMediaGeneration'
-
-const client = vi.hoisted(() => ({
-  getAvailableModels: vi.fn(),
-  generateImages: vi.fn(),
-  createVideo: vi.fn(),
-  pollVideo: vi.fn(),
-  fetchVideoContent: vi.fn()
-}))
+const client = vi.hoisted(() => ({ getAvailableModels: vi.fn() }))
 
 vi.mock('@/platform/xcity/litellmClient', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   ...client
 }))
 
+import { useGenerationStore } from '@/platform/xcity/generation/useGenerationStore'
+import { useMediaGeneration } from './useMediaGeneration'
+
 describe('useMediaGeneration', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
-    vi.stubGlobal('URL', {
-      createObjectURL: vi.fn(() => 'blob:fake'),
-      revokeObjectURL: vi.fn()
-    })
   })
 
   it('loads the allowed models and defaults the selection', async () => {
-    client.getAvailableModels.mockResolvedValue(['seedance-2.0', 'flux'])
+    client.getAvailableModels.mockResolvedValue(['seedance', 'seedream'])
     const gen = useMediaGeneration()
 
     await gen.loadModels()
 
-    expect(gen.models.value).toEqual(['seedance-2.0', 'flux'])
-    expect(gen.selectedModel.value).toBe('seedance-2.0')
+    expect(gen.models.value).toEqual(['seedance', 'seedream'])
+    expect(gen.selectedModel.value).toBe('seedance')
+    expect(gen.loadFailed.value).toBe(false)
   })
 
-  it('generates images and collects their sources', async () => {
-    client.generateImages.mockResolvedValue([
-      { url: 'https://cdn/a.png' },
-      { b64_json: 'AAAA' }
-    ])
+  it('flags loadFailed when the models cannot be fetched', async () => {
+    client.getAvailableModels.mockRejectedValue(new Error('down'))
     const gen = useMediaGeneration()
-    gen.mode.value = 'image'
-    gen.selectedModel.value = 'flux'
-    gen.prompt.value = 'a fox'
 
-    await gen.generate()
+    await gen.loadModels()
 
-    expect(gen.imageResults.value).toEqual([
-      'https://cdn/a.png',
-      'data:image/png;base64,AAAA'
-    ])
+    expect(gen.loadFailed.value).toBe(true)
   })
 
-  it('runs the video pipeline and exposes an object URL', async () => {
-    client.createVideo.mockResolvedValue({ id: 'v9', status: 'queued' })
-    client.pollVideo.mockImplementation(async (_id, opts) => {
-      opts?.onUpdate?.({ id: 'v9', status: 'completed', progress: 100 })
-      return { id: 'v9', status: 'completed' }
-    })
-    client.fetchVideoContent.mockResolvedValue(new Blob(['x']))
+  it('submits a video job with the chosen duration to the store', () => {
+    const store = useGenerationStore()
+    const spy = vi.spyOn(store, 'submit').mockReturnValue('job-1')
     const gen = useMediaGeneration()
     gen.mode.value = 'video'
-    gen.selectedModel.value = 'seedance-2.0'
-    gen.prompt.value = 'a wave'
+    gen.selectedModel.value = 'seedance'
+    gen.prompt.value = 'a fox'
+    gen.seconds.value = '8'
 
-    await gen.generate()
+    gen.submit()
 
-    expect(gen.progress.value).toBe(100)
-    expect(gen.videoUrl.value).toBe('blob:fake')
+    expect(spy).toHaveBeenCalledWith({
+      kind: 'video',
+      model: 'seedance',
+      prompt: 'a fox',
+      params: { seconds: '8', size: undefined, n: undefined }
+    })
   })
 
-  it('surfaces an error and does nothing on empty prompt', async () => {
-    client.generateImages.mockRejectedValue(new Error('blocked'))
+  it('does not submit without a prompt or model', () => {
+    const store = useGenerationStore()
+    const spy = vi.spyOn(store, 'submit')
     const gen = useMediaGeneration()
-    gen.mode.value = 'image'
-    gen.selectedModel.value = 'flux'
 
-    gen.prompt.value = '  '
-    await gen.generate()
-    expect(client.generateImages).not.toHaveBeenCalled()
+    gen.submit()
 
-    gen.prompt.value = 'x'
-    await gen.generate()
-    expect(gen.error.value).toBe('blocked')
+    expect(spy).not.toHaveBeenCalled()
+    expect(gen.canSubmit.value).toBe(false)
   })
 })
