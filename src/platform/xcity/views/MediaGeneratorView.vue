@@ -30,15 +30,7 @@
 
       <label class="flex flex-col gap-1 text-sm text-muted-foreground">
         {{ t('mediaGen.model') }}
-        <select
-          v-model="selectedModel"
-          :class="
-            cn(
-              'h-10 w-full rounded-lg border-none bg-secondary-background px-3 text-sm text-base-foreground',
-              'focus-visible:ring-1 focus-visible:ring-border-default focus-visible:outline-none'
-            )
-          "
-        >
+        <select v-model="selectedModel" :class="inputClass">
           <option v-if="!models.length" value="" disabled>
             {{ t('mediaGen.noModels') }}
           </option>
@@ -52,109 +44,98 @@
         :placeholder="t('mediaGen.promptPlaceholder')"
         :class="
           cn(
-            'w-full resize-y rounded-lg border-none bg-secondary-background px-4 py-2 text-sm text-base-foreground',
-            'placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-border-default focus-visible:outline-none'
+            'resize-y px-4 py-2',
+            inputClass,
+            'placeholder:text-muted-foreground'
           )
         "
       />
 
-      <div class="flex items-center gap-2">
-        <Button
-          class="h-10 flex-1"
-          :loading="isGenerating"
-          :disabled="!canGenerate"
-          @click="generate"
+      <div class="flex items-end gap-2">
+        <label
+          v-if="mode === 'video'"
+          class="flex flex-1 flex-col gap-1 text-sm text-muted-foreground"
         >
-          {{ isGenerating ? t('mediaGen.generating') : t('mediaGen.generate') }}
-        </Button>
-        <Button
-          v-if="isGenerating"
-          variant="secondary"
-          class="h-10"
-          @click="cancel"
+          {{ t('mediaGen.duration') }}
+          <input v-model="seconds" type="number" min="1" :class="inputClass" />
+        </label>
+        <label
+          v-if="mode === 'image'"
+          class="flex flex-1 flex-col gap-1 text-sm text-muted-foreground"
         >
-          {{ t('mediaGen.cancel') }}
-        </Button>
-      </div>
-
-      <div
-        v-if="isGenerating && mode === 'video'"
-        class="h-1.5 w-full overflow-hidden rounded-full bg-secondary-background"
-      >
-        <div
-          class="h-full rounded-full bg-azure-600 transition-[width]"
-          :style="{ width: `${progress}%` }"
-        />
-      </div>
-
-      <p v-if="error" class="text-error-foreground my-0 text-sm">{{ error }}</p>
-
-      <div class="flex flex-1 flex-col gap-3">
-        <video
-          v-if="videoUrl"
-          :src="videoUrl"
-          controls
-          class="w-full rounded-lg bg-black"
-        />
-
-        <div v-else-if="imageResults.length" class="grid grid-cols-2 gap-3">
-          <img
-            v-for="(src, index) in imageResults"
-            :key="index"
-            :src
-            class="w-full rounded-lg"
+          {{ t('mediaGen.count') }}
+          <input
+            v-model.number="count"
+            type="number"
+            min="1"
+            :class="inputClass"
           />
-        </div>
-
-        <p v-else class="my-auto text-center text-sm text-muted-foreground">
-          {{ t('mediaGen.resultEmpty') }}
-        </p>
+        </label>
+        <label class="flex flex-1 flex-col gap-1 text-sm text-muted-foreground">
+          {{ t('mediaGen.size') }}
+          <input
+            v-model="size"
+            :placeholder="t('mediaGen.sizePlaceholder')"
+            :class="inputClass"
+          />
+        </label>
       </div>
+
+      <Button class="h-10" :disabled="!canSubmit" @click="submit">
+        {{ t('mediaGen.generate') }}
+      </Button>
+
+      <GenerationGallery
+        :jobs="store.jobs"
+        @cancel="store.cancel"
+        @retry="store.retry"
+        @remove="store.remove"
+      />
     </div>
   </BaseViewTemplate>
 </template>
 
 <script setup lang="ts">
 import { cn } from '@comfyorg/tailwind-utils'
-import { computed, onMounted, onUnmounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import Button from '@/components/ui/button/Button.vue'
+import GenerationGallery from '@/platform/xcity/components/GenerationGallery.vue'
 import type { GenerationMode } from '@/platform/xcity/composables/useMediaGeneration'
 import { useMediaGeneration } from '@/platform/xcity/composables/useMediaGeneration'
+import { useGenerationStore } from '@/platform/xcity/generation/useGenerationStore'
 import BaseViewTemplate from '@/views/templates/BaseViewTemplate.vue'
 
 const { t } = useI18n()
+const store = useGenerationStore()
 
 const {
   mode,
   prompt,
   models,
   selectedModel,
-  isGenerating,
-  progress,
-  error,
   loadFailed,
-  imageResults,
-  videoUrl,
+  seconds,
+  size,
+  count,
+  canSubmit,
   loadModels,
-  generate,
-  cancel,
-  revokeVideo
+  submit
 } = useMediaGeneration()
+
+const inputClass = cn(
+  'h-10 w-full rounded-lg border-none bg-secondary-background px-3 text-sm text-base-foreground',
+  'focus-visible:ring-1 focus-visible:ring-border-default focus-visible:outline-none'
+)
 
 const modes: { value: GenerationMode; label: string }[] = [
   { value: 'video', label: t('mediaGen.modeVideo') },
   { value: 'image', label: t('mediaGen.modeImage') }
 ]
 
-const canGenerate = computed(
-  () => !!prompt.value.trim() && !!selectedModel.value && !isGenerating.value
-)
-
 onMounted(() => {
   document.getElementById('splash-loader')?.remove()
   void loadModels()
 })
-onUnmounted(revokeVideo)
 </script>

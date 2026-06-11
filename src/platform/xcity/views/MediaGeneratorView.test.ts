@@ -1,19 +1,18 @@
 import { render, screen } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
+import { createPinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import MediaGeneratorView from './MediaGeneratorView.vue'
 
 const h = vi.hoisted(() => ({
   loadModels: vi.fn(),
-  generate: vi.fn(),
-  cancel: vi.fn(),
-  revokeVideo: vi.fn(),
+  submit: vi.fn(),
   loadFailed: null as { value: boolean } | null
 }))
 
 vi.mock('@/platform/xcity/composables/useMediaGeneration', async () => {
-  const { ref } = await import('vue')
+  const { computed, ref } = await import('vue')
   h.loadFailed = ref(false)
   return {
     useMediaGeneration: () => ({
@@ -21,16 +20,13 @@ vi.mock('@/platform/xcity/composables/useMediaGeneration', async () => {
       prompt: ref(''),
       models: ref([]),
       selectedModel: ref(''),
-      isGenerating: ref(false),
-      progress: ref(0),
-      error: ref(''),
       loadFailed: h.loadFailed,
-      imageResults: ref([]),
-      videoUrl: ref(null),
+      seconds: ref('5'),
+      size: ref(''),
+      count: ref(1),
+      canSubmit: computed(() => false),
       loadModels: h.loadModels,
-      generate: h.generate,
-      cancel: h.cancel,
-      revokeVideo: h.revokeVideo
+      submit: h.submit
     })
   }
 })
@@ -40,11 +36,13 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 function renderView() {
   return render(MediaGeneratorView, {
     global: {
+      plugins: [createPinia()],
       stubs: {
         Button: {
           template: '<button @click="$emit(\'click\')"><slot /></button>'
         },
-        BaseViewTemplate: { template: '<div><slot /></div>' }
+        BaseViewTemplate: { template: '<div><slot /></div>' },
+        GenerationGallery: true
       }
     }
   })

@@ -2201,7 +2201,20 @@
     "resultEmpty": "Your generated media will appear here.",
     "loadFailedTitle": "Couldn't load the generator",
     "loadFailedHint": "The AI service is temporarily unavailable. Please try again in a moment.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "duration": "Duration (s)",
+    "count": "Count",
+    "size": "Size",
+    "sizePlaceholder": "e.g. 1280x720",
+    "download": "Download",
+    "delete": "Delete",
+    "status": {
+      "queued": "Queued",
+      "running": "Generating…",
+      "completed": "Done",
+      "failed": "Failed",
+      "canceled": "Canceled"
+    }
   },
   "auth": {
     "apiKey": {
