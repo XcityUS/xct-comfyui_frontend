@@ -157,12 +157,6 @@ if (isXcityApp) {
       if (e instanceof XcityAuthError) return next(false)
     }
 
-    // No ComfyUI server backs this deployment; the graph workspace at '/'
-    // cannot initialize. Land users on the generation page.
-    if (to.path === '/') {
-      return next({ name: 'xcity-create' })
-    }
-
     return next()
   })
 }
