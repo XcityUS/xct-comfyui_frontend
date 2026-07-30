@@ -23,6 +23,7 @@ import LayoutDefault from '@/views/layouts/LayoutDefault.vue'
 import { captureOAuthRequestId } from '@/platform/cloud/oauth/oauthState'
 import { installPreservedQueryTracker } from '@/platform/navigation/preservedQueryTracker'
 import { PRESERVED_QUERY_NAMESPACES } from '@/platform/navigation/preservedQueryNamespaces'
+import { preserveLoggedOutShareAuthAttribution } from '@/platform/workflow/sharing/utils/shareAuthAttribution'
 
 const cloudOnboardingRoutes = isCloud
   ? (await import('./platform/cloud/onboarding/onboardingCloudRoutes'))
@@ -47,8 +48,6 @@ function getBasePath(): string {
 const basePath = getBasePath()
 
 function trackPageView(): void {
-  if (!isCloud || typeof window === 'undefined') return
-
   useTelemetry()?.trackPageView(document.title, {
     path: window.location.href
   })
@@ -130,6 +129,10 @@ installPreservedQueryTracker(router, [
   {
     namespace: PRESERVED_QUERY_NAMESPACES.OAUTH,
     keys: ['oauth_request_id']
+  },
+  {
+    namespace: PRESERVED_QUERY_NAMESPACES.PRICING,
+    keys: ['pricing']
   }
 ])
 
@@ -143,7 +146,7 @@ router.afterEach(() => {
 })
 
 if (isXcityApp) {
-  router.beforeEach(async (to, _from, next) => {
+  router.beforeEach(async (_to, _from, next) => {
     try {
       await getXcityIdentity()
     } catch (e) {
@@ -152,12 +155,6 @@ if (isXcityApp) {
       // down, key provisioning) falls through so /create can render and show a
       // clear error instead of a blank screen.
       if (e instanceof XcityAuthError) return next(false)
-    }
-
-    // No ComfyUI server backs this deployment; the graph workspace at '/'
-    // cannot initialize. Land users on the generation page.
-    if (to.path === '/') {
-      return next({ name: 'xcity-create' })
     }
 
     return next()
@@ -206,6 +203,7 @@ if (isCloud && !isXcityApp) {
     // Pass authenticated users
     const authHeader = await authStore.getAuthHeader()
     const isLoggedIn = !!authHeader
+    preserveLoggedOutShareAuthAttribution(to.query, isLoggedIn)
 
     // Allow public routes
     if (isPublicRoute(to)) {

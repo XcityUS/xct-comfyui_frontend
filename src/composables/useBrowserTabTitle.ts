@@ -1,14 +1,15 @@
 import { useTitle } from '@vueuse/core'
 import { computed } from 'vue'
 
+import { isXcityApp } from '@/config/xcity'
 import { t } from '@/i18n'
 import { useSettingStore } from '@/platform/settings/settingStore'
 import { useWorkflowStore } from '@/platform/workflow/management/stores/workflowStore'
 import { useExecutionStore } from '@/stores/executionStore'
 import { useWorkspaceStore } from '@/stores/workspaceStore'
 
-const DEFAULT_TITLE = 'ComfyUI'
-const TITLE_SUFFIX = ' - ComfyUI'
+const DEFAULT_TITLE = isXcityApp ? 'Xcity Motion' : 'ComfyUI'
+const TITLE_SUFFIX = isXcityApp ? ' - Xcity Motion' : ' - ComfyUI'
 
 export const useBrowserTabTitle = () => {
   const executionStore = useExecutionStore()

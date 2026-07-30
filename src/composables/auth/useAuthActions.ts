@@ -47,6 +47,19 @@ export const useAuthActions = () => {
           email: 'support@comfy.org'
         })
       })
+    } else if (
+      error instanceof FirebaseError &&
+      error.message.toLowerCase().includes('signup_blocked')
+    ) {
+      // Match on `error.message`, not `error.code`: Firebase `beforeUserCreated`
+      // rejections collapse the thrown code into a generic `auth/internal-error`,
+      // so the message is the only reliable channel. `signup_blocked` is a
+      // cross-repo contract token; matched case-insensitively.
+      toastStore.add({
+        severity: 'error',
+        summary: t('g.error'),
+        detail: t('auth.errors.signupBlocked')
+      })
     } else if (error instanceof FirebaseError) {
       toastStore.add({
         severity: 'error',
@@ -59,28 +72,30 @@ export const useAuthActions = () => {
   }
 
   const logout = wrapWithErrorHandlingAsync(async () => {
-    const workflowStore = useWorkflowStore()
-    const modifiedWorkflows = workflowStore.modifiedWorkflows
-    if (modifiedWorkflows.length > 0) {
-      const dialogService = useDialogService()
-      const confirmed = await dialogService.confirm({
-        title: t('auth.signOut.unsavedChangesTitle'),
-        message: t('auth.signOut.unsavedChangesMessage'),
-        type: 'dirtyClose',
-        denyLabel: t('auth.signOut.signOutAnyway')
-      })
-      if (confirmed === null) return
+    if (isCloud) {
+      const workflowStore = useWorkflowStore()
+      const modifiedWorkflows = workflowStore.modifiedWorkflows
+      if (modifiedWorkflows.length > 0) {
+        const dialogService = useDialogService()
+        const confirmed = await dialogService.confirm({
+          title: t('auth.signOut.unsavedChangesTitle'),
+          message: t('auth.signOut.unsavedChangesMessage'),
+          type: 'dirtyClose',
+          denyLabel: t('auth.signOut.signOutAnyway')
+        })
+        if (confirmed === null) return
 
-      if (confirmed === true) {
-        const workflowService = useWorkflowService()
-        for (const workflow of modifiedWorkflows) {
-          try {
-            const saved = await workflowService.saveWorkflow(workflow)
-            if (!saved) return
-          } catch {
-            throw new Error(
-              t('auth.signOut.saveFailed', { workflow: workflow.path })
-            )
+        if (confirmed === true) {
+          const workflowService = useWorkflowService()
+          for (const workflow of modifiedWorkflows) {
+            try {
+              const saved = await workflowService.saveWorkflow(workflow)
+              if (!saved) return
+            } catch {
+              throw new Error(
+                t('auth.signOut.saveFailed', { workflow: workflow.path })
+              )
+            }
           }
         }
       }
@@ -186,8 +201,8 @@ export const useAuthActions = () => {
   )
 
   const signUpWithEmail = wrapWithErrorHandlingAsync(
-    async (email: string, password: string) => {
-      return await authStore.register(email, password)
+    async (email: string, password: string, turnstileToken?: string) => {
+      return await authStore.register(email, password, turnstileToken)
     },
     reportError
   )

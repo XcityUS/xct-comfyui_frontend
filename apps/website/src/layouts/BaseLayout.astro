@@ -4,7 +4,16 @@ import Analytics from '@vercel/analytics/astro'
 import '../styles/global.css'
 import type { Locale } from '../i18n/translations'
 import SiteFooter from '../components/common/SiteFooter.vue'
-import SiteNav from '../components/common/SiteNav.vue'
+import HeaderMain from '../components/common/HeaderMain/HeaderMain.vue'
+import AnnouncementBanner from '../templates/drops/AnnouncementBanner.vue'
+import { bannerConfig, getBannerData } from '../config/banner'
+import { isHrefActive } from '../composables/useCurrentPath'
+import {
+  BANNER_DISMISS_ATTR,
+  BANNER_STORAGE_KEY,
+  createBannerVersion,
+  evaluateBannerVisibility
+} from '../utils/banner'
 import { escapeJsonLd } from '../utils/escapeJsonLd'
 import { fetchGitHubStars, formatStarCount } from '../utils/github'
 
@@ -33,6 +42,18 @@ const rawLocale = Astro.currentLocale ?? 'en'
 const locale: Locale = rawLocale === 'zh-CN' ? 'zh-CN' : 'en'
 const rawStars = await fetchGitHubStars('Comfy-Org', 'ComfyUI')
 const githubStars = rawStars ? formatStarCount(rawStars) : ''
+
+// Announcement banner — build-time visibility gate + content-hash version key.
+// A promo never advertises the page you are already on, so the banner is
+// suppressed when its CTA points at the current path.
+const bannerData = getBannerData(bannerConfig, locale)
+const bannerVisible =
+  evaluateBannerVisibility(bannerConfig, {
+    currentLocale: locale,
+    currentSection: 'sitewide',
+    now: new Date(),
+  }) && !isHrefActive(bannerData.link?.href ?? '', Astro.url.pathname)
+const bannerVersion = createBannerVersion(bannerData, locale)
 
 const gtmId = 'GTM-NP9JM6K7'
 const gtmEnabled = import.meta.env.PROD
@@ -73,7 +94,7 @@ const websiteJsonLd = {
 
     <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="theme-color" content="#211927" />
@@ -124,6 +145,25 @@ const websiteJsonLd = {
 
     <ClientRouter />
     <slot name="head" />
+
+    <!-- Hide an already-dismissed announcement banner before first paint (no flash/shift). -->
+    {bannerVisible && (
+      <script
+        is:inline
+        define:vars={{
+          bannerVersion,
+          storageKey: BANNER_STORAGE_KEY,
+          dismissAttr: BANNER_DISMISS_ATTR
+        }}
+      >
+        try {
+          const dismissed = JSON.parse(localStorage.getItem(storageKey) || '{}')
+          if (dismissed[bannerVersion]) {
+            document.documentElement.setAttribute(dismissAttr, '')
+          }
+        } catch (e) {}
+      </script>
+    )}
   </head>
   <body class="bg-primary-comfy-ink text-white font-formula antialiased overflow-x-clip">
     {gtmEnabled && (
@@ -137,8 +177,16 @@ const websiteJsonLd = {
       </noscript>
     )}
 
-    <SiteNav locale={locale} github-stars={githubStars} client:load />
-    <main class="mt-20 lg:mt-32">
+    {bannerVisible && (
+      <AnnouncementBanner
+        data={bannerData}
+        version={bannerVersion}
+        locale={locale}
+        client:load
+      />
+    )}
+    <HeaderMain locale={locale} github-stars={githubStars} client:load />
+    <main>
       <slot />
     </main>
     <SiteFooter locale={locale} client:load />

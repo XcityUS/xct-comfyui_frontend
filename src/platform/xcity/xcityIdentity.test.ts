@@ -27,7 +27,7 @@ describe('xcityIdentity', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock)
     Object.defineProperty(window, 'location', {
-      value: { href: 'https://motion.xcity.one/create' },
+      value: { href: 'https://motion.xcity.ai/create' },
       writable: true,
       configurable: true
     })
@@ -45,7 +45,7 @@ describe('xcityIdentity', () => {
     const id = await getXcityIdentity()
 
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('https://xcity.one/api/me/litellm-key')
+    expect(url).toBe('https://xcity.ai/api/me/litellm-key')
     expect(init.credentials).toBe('include')
     expect(id).toEqual(ENVELOPE)
   })
@@ -70,8 +70,8 @@ describe('xcityIdentity', () => {
 
     await expect(getXcityIdentity()).rejects.toBeInstanceOf(XcityAuthError)
     expect(window.location.href).toBe(
-      'https://xcity.one/login?return=' +
-        encodeURIComponent('https://motion.xcity.one/create')
+      'https://xcity.ai/login?return=' +
+        encodeURIComponent('https://motion.xcity.ai/create')
     )
   })
 
