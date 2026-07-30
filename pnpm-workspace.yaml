@@ -72,7 +72,7 @@ catalog:
   '@webgpu/types': ^0.1.66
   algoliasearch: ^5.21.0
   astro: ^6.4.2
-  axios: ^1.15.2
+  axios: ^1.18.0
   class-variance-authority: ^0.7.1
   cross-env: ^10.1.0
   cva: 1.0.0-beta.4
