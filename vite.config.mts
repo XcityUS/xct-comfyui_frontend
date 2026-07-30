@@ -385,7 +385,10 @@ export default defineConfig({
     {
       name: 'inject-twitter-meta',
       transformIndexHtml(html) {
-        if (DISTRIBUTION !== 'cloud') return html
+        // The xcity build ships its own branding in index.html; skip the
+        // Comfy Cloud SEO/OG tags (duplicate <title>, wrong product).
+        if (DISTRIBUTION !== 'cloud' || process.env.VITE_XCITY_APP === 'true')
+          return html
 
         return {
           html,

@@ -146,7 +146,7 @@ router.afterEach(() => {
 })
 
 if (isXcityApp) {
-  router.beforeEach(async (to, _from, next) => {
+  router.beforeEach(async (_to, _from, next) => {
     try {
       await getXcityIdentity()
     } catch (e) {
