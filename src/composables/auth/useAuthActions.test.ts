@@ -28,6 +28,7 @@ const mockDialogService = vi.hoisted(() => ({
 }))
 
 const mockToastErrorHandler = vi.hoisted(() => vi.fn())
+const mockDistributionState = vi.hoisted(() => ({ isCloud: false }))
 
 const knownAuthErrorCodes = new Set([
   'auth/invalid-credential',
@@ -44,7 +45,9 @@ vi.mock('@/i18n', () => ({
 }))
 
 vi.mock('@/platform/distribution/types', () => ({
-  isCloud: false
+  get isCloud() {
+    return mockDistributionState.isCloud
+  }
 }))
 
 vi.mock('@/platform/telemetry', () => ({
@@ -92,11 +95,28 @@ function makeWorkflow(path: string): ModifiedWorkflow {
   return { path, isModified: true } satisfies ModifiedWorkflow
 }
 
+beforeEach(() => {
+  mockDistributionState.isCloud = false
+})
+
 describe('useAuthActions.logout', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    mockDistributionState.isCloud = true
     mockWorkflowStore.modifiedWorkflows = []
+  })
+
+  it('logs out on non-cloud distributions without prompting when workflows are modified', async () => {
+    mockDistributionState.isCloud = false
+    mockWorkflowStore.modifiedWorkflows = [makeWorkflow('a.json')]
+    const { logout } = useAuthActions()
+
+    await logout()
+
+    expect(mockDialogService.confirm).not.toHaveBeenCalled()
+    expect(mockWorkflowService.saveWorkflow).not.toHaveBeenCalled()
+    expect(mockAuthStore.logout).toHaveBeenCalledTimes(1)
   })
 
   it('logs out without prompting when no workflows are modified', async () => {
@@ -223,6 +243,40 @@ describe('useAuthActions.reportError', () => {
       detail: 'auth.errors.auth/invalid-credential'
     })
     expect(mockToastErrorHandler).not.toHaveBeenCalled()
+  })
+
+  it('shows the signupBlocked message when the error carries the signup_blocked token', () => {
+    const { reportError } = useAuthActions()
+
+    // The backend wraps the rejection in a generic code; we match the token in
+    // the message, so it must win over the auth.errors.${code} fallback.
+    reportError(
+      new FirebaseError(
+        'auth/internal-error',
+        'Account creation is temporarily unavailable. (ref: signup_blocked)'
+      )
+    )
+
+    expect(mockToastStore.add).toHaveBeenCalledWith({
+      severity: 'error',
+      summary: 'g.error',
+      detail: 'auth.errors.signupBlocked'
+    })
+    expect(mockToastErrorHandler).not.toHaveBeenCalled()
+  })
+
+  it('matches the signup_blocked token case-insensitively', () => {
+    const { reportError } = useAuthActions()
+
+    reportError(
+      new FirebaseError('auth/internal-error', 'rejected: SIGNUP_BLOCKED')
+    )
+
+    expect(mockToastStore.add).toHaveBeenCalledWith({
+      severity: 'error',
+      summary: 'g.error',
+      detail: 'auth.errors.signupBlocked'
+    })
   })
 
   it('shows the generic fallback for an unknown Firebase auth code', () => {

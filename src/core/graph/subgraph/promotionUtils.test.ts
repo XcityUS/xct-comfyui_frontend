@@ -3,22 +3,47 @@ import { fromPartial } from '@total-typescript/shoehorn'
 import { setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { promotedInputWidget } from '@/core/graph/subgraph/promotedInputWidget'
 import { LGraphNode } from '@/lib/litegraph/src/litegraph'
+import type { SubgraphNode } from '@/lib/litegraph/src/subgraph/SubgraphNode'
 import {
   createTestSubgraph,
   createTestSubgraphNode
 } from '@/lib/litegraph/src/subgraph/__fixtures__/subgraphHelpers'
 import type { IBaseWidget } from '@/lib/litegraph/src/types/widgets'
-import { isPromotedWidgetView } from '@/core/graph/subgraph/promotedWidgetTypes'
 import { usePreviewExposureStore } from '@/stores/previewExposureStore'
+import { useWidgetValueStore } from '@/stores/widgetValueStore'
+import { toLinkId } from '@/types/linkId'
+import type { WidgetId } from '@/types/widgetId'
 
-function widgetSourceNodeId(w: IBaseWidget): string | undefined {
-  return isPromotedWidgetView(w) ? w.sourceNodeId : undefined
+function promotedInputNames(host: {
+  inputs: Array<{ widgetId?: unknown; name: string }>
+}) {
+  return host.inputs
+    .filter((input) => input.widgetId)
+    .map((input) => input.name)
 }
 
-type TestPromotedWidget = IBaseWidget & {
-  sourceNodeId: string
-  sourceWidgetName: string
+function promotedHostWidgetNames(host: { widgets?: IBaseWidget[] }) {
+  return host.widgets?.map((widget) => widget.name) ?? []
+}
+
+function writePromotedInputValue(
+  host: { inputs: Array<{ widgetId?: WidgetId; name: string }> },
+  name: string,
+  value: IBaseWidget['value']
+) {
+  const input = host.inputs.find((input) => input.name === name)
+  if (!input?.widgetId) throw new Error(`Missing promoted input ${name}`)
+  useWidgetValueStore().setValue(input.widgetId, value)
+}
+
+function promotedWidgetRef(host: SubgraphNode, name: string): IBaseWidget {
+  const input = host.inputs.find((input) => input.name === name)
+  if (!input?.widgetId) throw new Error(`Missing promoted input ${name}`)
+  const widget = promotedInputWidget(input)
+  if (!widget) throw new Error(`Missing promoted input ${name}`)
+  return widget
 }
 
 const updatePreviewsMock = vi.hoisted(() => vi.fn())
@@ -29,13 +54,12 @@ vi.mock('@/services/litegraphService', () => ({
 import {
   CANVAS_IMAGE_PREVIEW_WIDGET,
   autoExposeKnownPreviewNodes,
+  createPromotedHostWidgetIdLookup,
   demoteWidget,
   getPromotableWidgets,
-  getWidgetName,
   hasUnpromotedWidgets,
   isLinkedPromotion,
   isPreviewPseudoWidget,
-  isWidgetPromotedOnSubgraphNode,
   promoteValueWidgetViaSubgraphInput,
   promoteRecommendedWidgets,
   pruneDisconnected,
@@ -168,15 +192,18 @@ describe('pruneDisconnected', () => {
     promoteValueWidgetViaSubgraphInput(subgraphNode, interiorNode, keptWidget)
 
     const missingWidgetInput = subgraph.addInput('missing-widget', 'STRING')
-    missingWidgetInput._widget = fromPartial<TestPromotedWidget>({
-      sourceNodeId: String(interiorNode.id),
-      sourceWidgetName: 'missing-widget'
-    })
     const missingNodeInput = subgraph.addInput('missing-node', 'STRING')
-    missingNodeInput._widget = fromPartial<TestPromotedWidget>({
-      sourceNodeId: '9999',
-      sourceWidgetName: 'missing-node'
-    })
+    const keptWidgetId = subgraphNode.inputs.find(
+      (input) => input.name === 'kept'
+    )?.widgetId
+    if (!keptWidgetId) throw new Error('Missing kept widgetId')
+    for (const input of [missingWidgetInput, missingNodeInput]) {
+      const hostInput = subgraphNode.inputs.find(
+        (entry) => entry._subgraphSlot === input
+      )
+      if (!hostInput) throw new Error(`Missing host input ${input.name}`)
+      hostInput.widgetId = keptWidgetId
+    }
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
@@ -299,6 +326,25 @@ describe('promoteRecommendedWidgets', () => {
     expect(input.link).not.toBeNull()
     expect(linkedInput?.linkIds).toContain(input.link)
     expect(subgraphNode.serialize().properties?.proxyWidgets).toBeUndefined()
+  })
+
+  it('preserves the source slot label when promoting a value widget', () => {
+    const subgraph = createTestSubgraph()
+    const subgraphNode = createTestSubgraphNode(subgraph)
+    const interiorNode = new LGraphNode('Prompt')
+    const input = interiorNode.addInput('text', 'STRING')
+    input.label = 'renamed_from_sidepanel'
+    const textWidget = interiorNode.addWidget('text', 'text', '', () => {})
+    input.widget = { name: textWidget.name }
+    subgraph.add(interiorNode)
+
+    promoteValueWidgetViaSubgraphInput(subgraphNode, interiorNode, textWidget)
+
+    const hostInput = subgraphNode.inputs.find((input) => input.name === 'text')
+    expect(hostInput?.label).toBe('renamed_from_sidepanel')
+    expect(promotedWidgetRef(subgraphNode, 'text').label).toBe(
+      'renamed_from_sidepanel'
+    )
   })
 
   it('promotes virtual previews through preview exposures', () => {
@@ -478,6 +524,22 @@ describe('hasUnpromotedWidgets', () => {
 
     expect(hasUnpromotedWidgets(subgraphNode)).toBe(false)
   })
+
+  it('returns false (does not throw) when SubgraphNode is detached', () => {
+    const subgraph = createTestSubgraph()
+    const subgraphNode = createTestSubgraphNode(subgraph)
+    const parentGraph = subgraphNode.graph!
+    parentGraph.add(subgraphNode)
+    const interiorNode = new LGraphNode('InnerNode')
+    subgraph.add(interiorNode)
+    interiorNode.addWidget('text', 'seed', '123', () => {})
+
+    parentGraph.remove(subgraphNode)
+
+    expect(subgraphNode.graph).toBeNull()
+    expect(() => hasUnpromotedWidgets(subgraphNode)).not.toThrow()
+    expect(hasUnpromotedWidgets(subgraphNode)).toBe(false)
+  })
 })
 
 describe('isLinkedPromotion', () => {
@@ -485,79 +547,107 @@ describe('isLinkedPromotion', () => {
     setActivePinia(createTestingPinia({ stubActions: false }))
   })
 
-  function linkedWidget(
-    sourceNodeId: string,
-    sourceWidgetName: string,
-    extra: Record<string, unknown> = {}
-  ): IBaseWidget {
-    return {
-      sourceNodeId,
-      sourceWidgetName,
-      name: 'value',
-      type: 'text',
-      value: '',
-      options: {},
-      y: 0,
-      ...extra
-    } as unknown as IBaseWidget
+  function promoteSource(host: SubgraphNode, widgetName: string): LGraphNode {
+    const node = new LGraphNode('Source')
+    const input = node.addInput(widgetName, 'STRING')
+    const widget = node.addWidget('text', widgetName, '', () => {})
+    input.widget = { name: widget.name }
+    host.subgraph.add(node)
+    promoteValueWidgetViaSubgraphInput(host, node, widget)
+    return node
   }
 
-  function createSubgraphWithInputs(count = 1) {
-    const subgraph = createTestSubgraph({
-      inputs: Array.from({ length: count }, (_, i) => ({
-        name: `input_${i}`,
-        type: 'STRING' as const
-      }))
-    })
-    return createTestSubgraphNode(subgraph)
+  it('returns true for a linked promotion', () => {
+    const host = createTestSubgraphNode(createTestSubgraph())
+    const node = promoteSource(host, 'text')
+
+    expect(isLinkedPromotion(host, String(node.id), 'text')).toBe(true)
+  })
+
+  it('returns false when no promotion exists', () => {
+    const host = createTestSubgraphNode(createTestSubgraph())
+
+    expect(isLinkedPromotion(host, '999', 'nonexistent')).toBe(false)
+  })
+
+  it('returns false when sourceWidgetName does not match', () => {
+    const host = createTestSubgraphNode(createTestSubgraph())
+    const node = promoteSource(host, 'text')
+
+    expect(isLinkedPromotion(host, String(node.id), 'wrong_name')).toBe(false)
+  })
+
+  it('identifies linked widgets across different inputs', () => {
+    const host = createTestSubgraphNode(createTestSubgraph())
+    const nodeA = promoteSource(host, 'string_a')
+    const nodeB = promoteSource(host, 'value')
+
+    expect(isLinkedPromotion(host, String(nodeA.id), 'string_a')).toBe(true)
+    expect(isLinkedPromotion(host, String(nodeB.id), 'value')).toBe(true)
+    expect(isLinkedPromotion(host, String(nodeA.id), 'value')).toBe(false)
+    expect(isLinkedPromotion(host, '5', 'string_a')).toBe(false)
+  })
+})
+
+describe('createPromotedHostWidgetIdLookup', () => {
+  beforeEach(() => {
+    setActivePinia(createTestingPinia({ stubActions: false }))
+  })
+
+  function promoteFreshSource(
+    host: SubgraphNode,
+    nodeTitle: string,
+    widgetName: string
+  ): LGraphNode {
+    const node = new LGraphNode(nodeTitle)
+    host.subgraph.add(node)
+    const input = node.addInput(widgetName, 'STRING')
+    const sourceWidget = node.addWidget('text', widgetName, 'v', () => {})
+    input.widget = { name: sourceWidget.name }
+    expect(
+      promoteValueWidgetViaSubgraphInput(host, node, sourceWidget).ok
+    ).toBe(true)
+    return node
   }
 
-  it('returns true when an input has a matching _widget', () => {
-    const subgraphNode = createSubgraphWithInputs()
-    subgraphNode.inputs[0]._widget = linkedWidget('3', 'text')
+  it('returns undefined (does not throw) when the interior source node is gone', () => {
+    const host = createTestSubgraphNode(createTestSubgraph())
+    const interiorNode = promoteFreshSource(host, 'Source', 'text')
+    const resolveBefore = createPromotedHostWidgetIdLookup(host)
+    expect(resolveBefore(String(interiorNode.id), 'text')).toBe(
+      host.inputs[0]?.widgetId
+    )
 
-    expect(isLinkedPromotion(subgraphNode, '3', 'text')).toBe(true)
+    host.subgraph.remove(interiorNode)
+
+    let resolveAfter: ReturnType<typeof createPromotedHostWidgetIdLookup>
+    expect(() => {
+      resolveAfter = createPromotedHostWidgetIdLookup(host)
+    }).not.toThrow()
+    expect(resolveAfter!(String(interiorNode.id), 'text')).toBeUndefined()
   })
 
-  it('returns false when no inputs exist or none match', () => {
-    const subgraph = createTestSubgraph()
-    const subgraphNode = createTestSubgraphNode(subgraph)
+  it('resolves each host widgetId independently for two sources promoting different widgets', () => {
+    const host = createTestSubgraphNode(createTestSubgraph())
+    const nodeA = promoteFreshSource(host, 'GlslA', 'alpha')
+    const nodeB = promoteFreshSource(host, 'GlslB', 'beta')
 
-    expect(isLinkedPromotion(subgraphNode, '999', 'nonexistent')).toBe(false)
-  })
+    const hostIdAlpha = host.inputs.find(
+      (input) => input.name === 'alpha'
+    )?.widgetId
+    const hostIdBeta = host.inputs.find(
+      (input) => input.name === 'beta'
+    )?.widgetId
+    expect(hostIdAlpha).toBeDefined()
+    expect(hostIdBeta).toBeDefined()
+    expect(hostIdAlpha).not.toBe(hostIdBeta)
 
-  it('returns false when sourceNodeId matches but sourceWidgetName does not', () => {
-    const subgraphNode = createSubgraphWithInputs()
-    subgraphNode.inputs[0]._widget = linkedWidget('3', 'text')
+    const resolve = createPromotedHostWidgetIdLookup(host)
 
-    expect(isLinkedPromotion(subgraphNode, '3', 'wrong_name')).toBe(false)
-  })
-
-  it('returns false when _widget is undefined on input', () => {
-    const subgraphNode = createSubgraphWithInputs()
-
-    expect(isLinkedPromotion(subgraphNode, '3', 'text')).toBe(false)
-  })
-
-  it('matches by sourceNodeId even when disambiguatingSourceNodeId is present', () => {
-    const subgraphNode = createSubgraphWithInputs()
-    subgraphNode.inputs[0]._widget = linkedWidget('6', 'text', {
-      disambiguatingSourceNodeId: '1'
-    })
-
-    expect(isLinkedPromotion(subgraphNode, '6', 'text')).toBe(true)
-    expect(isLinkedPromotion(subgraphNode, '1', 'text')).toBe(false)
-  })
-
-  it('identifies multiple linked widgets across different inputs', () => {
-    const subgraphNode = createSubgraphWithInputs(2)
-    subgraphNode.inputs[0]._widget = linkedWidget('3', 'string_a')
-    subgraphNode.inputs[1]._widget = linkedWidget('4', 'value')
-
-    expect(isLinkedPromotion(subgraphNode, '3', 'string_a')).toBe(true)
-    expect(isLinkedPromotion(subgraphNode, '4', 'value')).toBe(true)
-    expect(isLinkedPromotion(subgraphNode, '3', 'value')).toBe(false)
-    expect(isLinkedPromotion(subgraphNode, '5', 'string_a')).toBe(false)
+    expect(resolve(String(nodeA.id), 'alpha')).toBe(hostIdAlpha)
+    expect(resolve(String(nodeB.id), 'beta')).toBe(hostIdBeta)
+    expect(resolve(String(nodeA.id), 'beta')).toBeUndefined()
+    expect(resolve(String(nodeB.id), 'alpha')).toBeUndefined()
   })
 })
 
@@ -607,17 +697,13 @@ describe('reorderSubgraphInputsByName', () => {
     promoteValueWidgetViaSubgraphInput(host, firstNode, firstWidget)
     promoteValueWidgetViaSubgraphInput(host, secondNode, secondWidget)
 
-    expect(host.widgets.map((widget) => widget.name)).toEqual([
-      'first',
-      'second'
-    ])
+    expect(promotedInputNames(host)).toEqual(['first', 'second'])
+    expect(promotedHostWidgetNames(host)).toEqual(['first', 'second'])
 
     reorderSubgraphInputsByName(host, ['second', 'first'])
 
-    expect(host.widgets.map((widget) => widget.name)).toEqual([
-      'second',
-      'first'
-    ])
+    expect(promotedInputNames(host)).toEqual(['second', 'first'])
+    expect(promotedHostWidgetNames(host)).toEqual(['second', 'first'])
   })
 
   it('keeps promoted widget values aligned when a plain input is reordered before them', () => {
@@ -637,15 +723,13 @@ describe('reorderSubgraphInputsByName', () => {
     promoteValueWidgetViaSubgraphInput(host, firstNode, firstWidget)
     subgraph.addInput('plain', 'STRING')
     promoteValueWidgetViaSubgraphInput(host, secondNode, secondWidget)
-    host.widgets[0].value = 'first value'
-    host.widgets[1].value = 'second value'
+    writePromotedInputValue(host, 'first', 'first value')
+    writePromotedInputValue(host, 'second', 'second value')
 
     reorderSubgraphInputsByName(host, ['plain', 'second', 'first'])
 
-    expect(host.widgets.map((widget) => widget.name)).toEqual([
-      'second',
-      'first'
-    ])
+    expect(promotedInputNames(host)).toEqual(['second', 'first'])
+    expect(promotedHostWidgetNames(host)).toEqual(['second', 'first'])
     expect(host.serialize().widgets_values).toEqual([
       'second value',
       'first value'
@@ -727,15 +811,21 @@ describe('reorderSubgraphInputsByWidgetOrder', () => {
     secondInput.widget = { name: secondWidget.name }
     promoteValueWidgetViaSubgraphInput(host, firstNode, firstWidget)
     promoteValueWidgetViaSubgraphInput(host, secondNode, secondWidget)
-    host.widgets[0].value = 'first value'
-    host.widgets[1].value = 'second value'
+    writePromotedInputValue(host, 'text', 'first value')
+    writePromotedInputValue(host, 'text_1', 'second value')
 
-    reorderSubgraphInputsByWidgetOrder(host, [host.widgets[1], host.widgets[0]])
-
-    expect(host.widgets.map((widget) => widgetSourceNodeId(widget))).toEqual([
-      String(secondNode.id),
-      String(firstNode.id)
+    const firstPromotedWidget = promotedWidgetRef(host, 'text')
+    const secondPromotedWidget = promotedWidgetRef(host, 'text_1')
+    reorderSubgraphInputsByWidgetOrder(host, [
+      secondPromotedWidget,
+      firstPromotedWidget
     ])
+
+    expect(host.subgraph.inputs.map((input) => input.name)).toEqual([
+      'text_1',
+      'text'
+    ])
+    expect(promotedHostWidgetNames(host)).toEqual(['text_1', 'text'])
     expect(host.serialize().widgets_values).toEqual([
       'second value',
       'first value'
@@ -774,11 +864,11 @@ describe('demoteWidget — axiomatic projection retraction', () => {
   it('drops projection but keeps slot and external link when host slot is externally connected', () => {
     const { host, interiorNode, interiorWidget } = setupPromotedWidget()
     const hostInput = host.inputs[0]
-    hostInput.link = 9999
-    const promotedViewsBefore = host.widgets.length
+    hostInput.link = toLinkId(9999)
+    const promotedInputId = hostInput.widgetId
 
     expect(host.subgraph.inputs).toHaveLength(1)
-    expect(promotedViewsBefore).toBeGreaterThan(0)
+    expect(promotedInputId).toBeDefined()
 
     demoteWidget(interiorNode, interiorWidget, [host])
 
@@ -788,13 +878,9 @@ describe('demoteWidget — axiomatic projection retraction', () => {
     expect(
       isLinkedPromotion(host, String(interiorNode.id), interiorWidget.name)
     ).toBe(false)
-    expect(
-      host.widgets.some(
-        (widget) =>
-          widgetSourceNodeId(widget) === String(interiorNode.id) &&
-          widget.name === interiorWidget.name
-      )
-    ).toBe(false)
+    expect(host.widgets).toHaveLength(0)
+    if (!promotedInputId) throw new Error('Missing promoted input widgetId')
+    expect(useWidgetValueStore().getWidget(promotedInputId)).toBeUndefined()
   })
 
   it('removes the slot entirely when host slot has no external link', () => {
@@ -812,12 +898,7 @@ describe('demoteWidget — axiomatic projection retraction', () => {
     const { host, nodeA, widgetA, nodeB, widgetB } =
       buildDuplicateNamePromotion()
 
-    const promotedViewForB = host.widgets.find(
-      (w) => isPromotedWidgetView(w) && w.sourceNodeId === String(nodeB.id)
-    )
-    expect(promotedViewForB!.name).toBe('text_1')
-
-    demoteWidget(nodeB, promotedViewForB!, [host])
+    demoteWidget(nodeB, widgetB, [host])
 
     expect(host.subgraph.inputs.map((i) => i.name)).toEqual(['text'])
     expect(isLinkedPromotion(host, String(nodeB.id), widgetB.name)).toBe(false)
@@ -825,15 +906,19 @@ describe('demoteWidget — axiomatic projection retraction', () => {
   })
 
   it('demotes the correct slot when widget lives on a nested SubgraphNode with same-named deep sources', () => {
-    const { host: innerHost, nodeB } = buildDuplicateNamePromotion()
+    const { host: innerHost } = buildDuplicateNamePromotion()
 
     const outerSubgraph = createTestSubgraph()
     const outerHost = createTestSubgraphNode(outerSubgraph)
     outerSubgraph.add(innerHost)
 
-    for (const w of [...innerHost.widgets]) {
+    for (const input of innerHost.inputs) {
       expect(
-        promoteValueWidgetViaSubgraphInput(outerHost, innerHost, w).ok
+        promoteValueWidgetViaSubgraphInput(
+          outerHost,
+          innerHost,
+          promotedWidgetRef(innerHost, input.name)
+        ).ok
       ).toBe(true)
     }
     expect(outerHost.subgraph.inputs.map((i) => i.name)).toEqual([
@@ -841,12 +926,7 @@ describe('demoteWidget — axiomatic projection retraction', () => {
       'text_1'
     ])
 
-    const innerViewForB = innerHost.widgets.find(
-      (w) => isPromotedWidgetView(w) && w.sourceNodeId === String(nodeB.id)
-    )
-    expect(innerViewForB!.name).toBe('text_1')
-
-    demoteWidget(innerHost, innerViewForB!, [outerHost])
+    demoteWidget(innerHost, promotedWidgetRef(innerHost, 'text_1'), [outerHost])
 
     expect(outerHost.subgraph.inputs.map((i) => i.name)).toEqual(['text'])
     expect(isLinkedPromotion(outerHost, String(innerHost.id), 'text_1')).toBe(
@@ -863,66 +943,19 @@ describe('disambiguated nested promotion identity', () => {
     setActivePinia(createTestingPinia({ stubActions: false }))
   })
 
-  function linkedView(
-    sourceNodeId: string,
-    sourceWidgetName: string,
-    overrides: Record<string, unknown> = {}
-  ): IBaseWidget {
-    return {
-      sourceNodeId,
-      sourceWidgetName,
-      name: sourceWidgetName,
-      type: 'text',
-      value: '',
-      options: {},
-      y: 0,
-      ...overrides
-    } as unknown as IBaseWidget
-  }
-
-  function createSubgraphHost() {
-    const subgraph = createTestSubgraph({
-      inputs: [{ name: 'text_1', type: 'STRING' }]
-    })
-    return createTestSubgraphNode(subgraph)
-  }
-
-  it('identifies a promoted nested view by its immediate slot name, not its deep source widget name', () => {
-    const host = createSubgraphHost()
-    host.inputs[0]._widget = linkedView('inner', 'text_1')
-
-    const interiorWidget = linkedView('inner', 'text', { name: 'text_1' })
-    const interiorNode = {
-      id: 'inner',
-      title: 'inner',
-      type: 'inner'
-    } as unknown as LGraphNode
-
-    const source = {
-      sourceNodeId: String(interiorNode.id),
-      sourceWidgetName: getWidgetName(interiorWidget)
-    }
-
-    expect(isWidgetPromotedOnSubgraphNode(host, source, interiorWidget)).toBe(
-      true
-    )
-  })
-
   it('does not prune a promotion whose source is a nested SubgraphNode exposing a disambiguated widget', () => {
-    const subgraph = createTestSubgraph({
-      inputs: [{ name: 'text_1', type: 'STRING' }]
-    })
+    const { host: innerHost } = buildDuplicateNamePromotion()
+    const subgraph = createTestSubgraph()
     const host = createTestSubgraphNode(subgraph)
+    subgraph.add(innerHost)
 
-    const nestedSubgraphNode = {
-      id: 'inner',
-      title: 'inner',
-      type: 'inner',
-      widgets: [linkedView('deep', 'text', { name: 'text_1' })]
-    } as unknown as LGraphNode
-    subgraph.add(nestedSubgraphNode)
-
-    host.inputs[0]._widget = linkedView('inner', 'text_1')
+    expect(
+      promoteValueWidgetViaSubgraphInput(
+        host,
+        innerHost,
+        promotedWidgetRef(innerHost, 'text_1')
+      ).ok
+    ).toBe(true)
 
     pruneDisconnected(host)
 
@@ -956,9 +989,13 @@ describe('disambiguated nested promotion identity', () => {
     const outerHost = createTestSubgraphNode(outerSubgraph)
     outerSubgraph.add(innerHost)
 
-    for (const w of [...innerHost.widgets]) {
+    for (const input of innerHost.inputs) {
       expect(
-        promoteValueWidgetViaSubgraphInput(outerHost, innerHost, w).ok
+        promoteValueWidgetViaSubgraphInput(
+          outerHost,
+          innerHost,
+          promotedWidgetRef(innerHost, input.name)
+        ).ok
       ).toBe(true)
     }
 

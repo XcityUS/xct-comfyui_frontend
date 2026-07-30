@@ -24,25 +24,37 @@ import {
   shouldRenderAsVue
 } from '@/renderer/extensions/vueNodes/widgets/registry/widgetRegistry'
 import { nodeTypeValidForApp } from '@/stores/appModeStore'
-import type { WidgetState } from '@/stores/widgetValueStore'
 import {
   stripGraphPrefix,
   useWidgetValueStore
 } from '@/stores/widgetValueStore'
 import { useMissingModelStore } from '@/platform/missingModel/missingModelStore'
 import { useExecutionErrorStore } from '@/stores/executionErrorStore'
-import type { WidgetEntityId } from '@/world/entityIds'
-import { getWidgetState } from '@/world/widgetValueIO'
+import {
+  createNodeExecutionId,
+  createNodeLocatorId
+} from '@/types/nodeIdentification'
+import type { NodeExecutionId, NodeLocatorId } from '@/types/nodeIdentification'
+import type { NodeId } from '@/types/nodeId'
+import type { WidgetId } from '@/types/widgetId'
+import { widgetId } from '@/types/widgetId'
+import type { WidgetState } from '@/types/widgetState'
+import {
+  executionIdToNodeLocatorId,
+  getExecutionIdFromNodeData
+} from '@/utils/graphTraversalUtil'
 import type { LGraph } from '@/lib/litegraph/src/litegraph'
 import type {
   LinkedUpstreamInfo,
   SimplifiedWidget,
   WidgetValue
 } from '@/types/simplifiedWidget'
-import {
-  getExecutionIdFromNodeData,
-  getLocatorIdFromNodeData
-} from '@/utils/graphTraversalUtil'
+
+const TOOLTIP_VALUE_TYPES = ['asset', 'combo', 'number', 'text'] as const
+type TooltipValueType = (typeof TOOLTIP_VALUE_TYPES)[number]
+function isTooltipValueType(val: unknown): val is TooltipValueType {
+  return TOOLTIP_VALUE_TYPES.includes(val as TooltipValueType)
+}
 
 interface ProcessedWidget {
   advanced: boolean
@@ -50,8 +62,8 @@ interface ProcessedWidget {
   hasLayoutSize: boolean
   hasError: boolean
   hidden: boolean
-  id: string
-  entityId?: WidgetEntityId
+  id?: string
+  widgetId?: WidgetId
   name: string
   renderKey: string
   simplified: SimplifiedWidget
@@ -65,8 +77,8 @@ interface ProcessedWidget {
 }
 
 interface WidgetUiCallbacks {
-  getTooltipConfig: (widget: SafeWidgetData) => TooltipOptions
-  handleNodeRightClick: (e: PointerEvent, nodeId: string) => void
+  getTooltipConfig: (widget: SafeWidgetData, fullVal?: string) => TooltipOptions
+  handleNodeRightClick: (e: PointerEvent, nodeId: NodeId) => void
 }
 
 interface ComputeProcessedWidgetsOptions {
@@ -81,27 +93,37 @@ interface ComputeProcessedWidgetsOptions {
 function createWidgetUpdateHandler(
   widgetState: WidgetState | undefined,
   widget: SafeWidgetData,
-  nodeExecId: string,
+  nodeExecId: NodeExecutionId,
   widgetOptions: IWidgetOptions | Record<string, never>,
   executionErrorStore: ReturnType<typeof useExecutionErrorStore>
 ): (newValue: WidgetValue) => void {
   return (newValue: WidgetValue) => {
     if (widgetState) widgetState.value = newValue
     widget.callback?.(newValue)
-    const effectiveExecId = widget.sourceExecutionId ?? nodeExecId
+    const options = { min: widgetOptions?.min, max: widgetOptions?.max }
+    if (widget.sourceExecutionId) {
+      const sourceWidgetName = widget.sourceWidgetName ?? widget.name
+      executionErrorStore.clearWidgetRelatedErrors(
+        widget.sourceExecutionId,
+        sourceWidgetName,
+        sourceWidgetName,
+        newValue,
+        options
+      )
+    }
     executionErrorStore.clearWidgetRelatedErrors(
-      effectiveExecId,
-      widget.slotName ?? widget.name,
+      nodeExecId,
+      widget.name,
       widget.name,
       newValue,
-      { min: widgetOptions?.min, max: widgetOptions?.max }
+      options
     )
   }
 }
 
 export function hasWidgetError(
   widget: SafeWidgetData,
-  nodeExecId: string,
+  nodeExecId: NodeExecutionId,
   nodeErrors:
     | { errors: { extra_info?: { input_name?: string } }[] }
     | undefined,
@@ -111,46 +133,78 @@ export function hasWidgetError(
   const errors = widget.sourceExecutionId
     ? executionErrorStore.lastNodeErrors?.[widget.sourceExecutionId]?.errors
     : nodeErrors?.errors
-  const inputName = widget.slotName ?? widget.name
+  // Raw interior errors name the source widget, not the boundary name
+  const errorInputName = widget.sourceExecutionId
+    ? (widget.sourceWidgetName ?? widget.name)
+    : widget.name
   return (
-    !!errors?.some((e) => e.extra_info?.input_name === inputName) ||
-    missingModelStore.isWidgetMissingModel(
-      widget.sourceExecutionId ?? nodeExecId,
-      widget.name
-    )
+    !!errors?.some((e) => e.extra_info?.input_name === errorInputName) ||
+    missingModelStore.isWidgetMissingModel(nodeExecId, widget.name)
   )
 }
 
 export function getWidgetIdentity(
   widget: SafeWidgetData,
-  nodeId: string | number | undefined,
+  nodeId: NodeId | undefined,
   index: number
 ): {
   dedupeIdentity?: string
   renderKey: string
 } {
-  if (widget.entityId) {
-    const dedupeIdentity = `${widget.entityId}:${widget.type}`
+  if (widget.widgetId) {
+    const dedupeIdentity = `${widget.widgetId}:${widget.type}`
     return { dedupeIdentity, renderKey: dedupeIdentity }
   }
-  const slotNameForIdentity = widget.slotName ?? widget.name
-  const hostNodeIdRoot =
-    nodeId !== undefined && nodeId !== ''
-      ? `node:${String(stripGraphPrefix(nodeId))}`
-      : undefined
-  const stableIdentityRoot = widget.nodeId
-    ? `node:${String(stripGraphPrefix(widget.nodeId))}`
+  const hostNodeIdRoot = nodeId ? stripGraphPrefix(nodeId) : null
+  const widgetNodeIdRoot = widget.nodeId
+    ? stripGraphPrefix(widget.nodeId)
+    : null
+  const stableIdentityRoot = widgetNodeIdRoot
+    ? `node:${widgetNodeIdRoot}`
     : widget.sourceExecutionId
       ? `exec:${widget.sourceExecutionId}`
       : hostNodeIdRoot
+        ? `node:${hostNodeIdRoot}`
+        : undefined
 
   const dedupeIdentity = stableIdentityRoot
-    ? `${stableIdentityRoot}:${widget.name}:${slotNameForIdentity}:${widget.type}`
+    ? `${stableIdentityRoot}:${widget.name}:${widget.type}`
     : undefined
   const renderKey =
     dedupeIdentity ??
-    `transient:${String(nodeId ?? '')}:${widget.name}:${slotNameForIdentity}:${widget.type}:${index}`
+    `transient:${String(nodeId ?? '')}:${widget.name}:${widget.type}:${index}`
   return { dedupeIdentity, renderKey }
+}
+
+function getProcessedNodeExecutionId(
+  isGraphReady: boolean,
+  rootGraph: LGraph | null,
+  nodeData: VueNodeData
+): NodeExecutionId | null {
+  if (!isGraphReady || !rootGraph) return createNodeExecutionId([nodeData.id])
+
+  return getExecutionIdFromNodeData(rootGraph, nodeData)
+}
+
+function getWidgetNodeLocatorId(
+  nodeData: VueNodeData,
+  bareWidgetId: NodeId | null,
+  sourceExecutionId: NodeExecutionId | undefined,
+  rootGraph: LGraph | null
+): NodeLocatorId | undefined {
+  if (sourceExecutionId && rootGraph) {
+    const sourceLocator = executionIdToNodeLocatorId(
+      rootGraph,
+      sourceExecutionId
+    )
+    if (sourceLocator) return sourceLocator
+  }
+
+  if (!bareWidgetId) return undefined
+
+  return (
+    createNodeLocatorId(nodeData.subgraphId ?? null, bareWidgetId) ?? undefined
+  )
 }
 
 export function isWidgetVisible(
@@ -177,10 +231,12 @@ export function computeProcessedWidgets({
   const missingModelStore = useMissingModelStore()
   const widgetValueStore = useWidgetValueStore()
 
-  const nodeExecId =
-    isGraphReady && rootGraph
-      ? getExecutionIdFromNodeData(rootGraph, nodeData)
-      : String(nodeData.id ?? '')
+  const nodeExecId = getProcessedNodeExecutionId(
+    isGraphReady,
+    rootGraph,
+    nodeData
+  )
+  if (!nodeExecId) return []
 
   const nodeErrors = executionErrorStore.lastNodeErrors?.[nodeExecId]
 
@@ -200,13 +256,12 @@ export function computeProcessedWidgets({
     if (!shouldRenderAsVue(widget)) continue
 
     const identity = getWidgetIdentity(widget, nodeId, index)
-    const widgetState = widget.entityId
-      ? getWidgetState(widget.entityId)
-      : graphId
+    const widgetNodeId = stripGraphPrefix(widget.nodeId ?? nodeId)
+    const widgetState = widget.widgetId
+      ? widgetValueStore.getWidget(widget.widgetId)
+      : graphId && widgetNodeId
         ? widgetValueStore.getWidget(
-            graphId,
-            String(stripGraphPrefix(widget.nodeId ?? nodeId ?? '')),
-            widget.name
+            widgetId(graphId, widgetNodeId, widget.name)
           )
         : undefined
     const mergedOptions: IWidgetOptions = {
@@ -261,7 +316,7 @@ export function computeProcessedWidgets({
     isVisible: visible,
     identity: { renderKey }
   } of uniqueWidgets) {
-    const bareWidgetId = String(stripGraphPrefix(widget.nodeId ?? nodeId ?? ''))
+    const bareWidgetId = stripGraphPrefix(widget.nodeId ?? nodeId)
 
     const vueComponent =
       getComponent(widget.type) ||
@@ -288,20 +343,21 @@ export function computeProcessedWidgets({
           }
         : undefined
 
-    const nodeLocatorId = widget.nodeId
-      ? widget.nodeId
-      : nodeData
-        ? getLocatorIdFromNodeData(nodeData)
-        : undefined
+    const nodeLocatorId = getWidgetNodeLocatorId(
+      nodeData,
+      bareWidgetId,
+      widget.sourceExecutionId,
+      rootGraph
+    )
 
     const simplified: SimplifiedWidget = {
-      name: widget.name,
+      name: widgetState?.name ?? widget.name,
       type: widget.type,
       value,
       borderStyle,
       callback: widget.callback,
       controlWidget: widget.controlWidget,
-      label: widget.promotedLabel ?? widgetState?.label,
+      label: widgetState?.label,
       linkedUpstream,
       nodeLocatorId,
       options: widgetOptions,
@@ -316,7 +372,11 @@ export function computeProcessedWidgets({
       executionErrorStore
     )
 
-    const tooltipConfig = ui.getTooltipConfig(widget)
+    const valueTooltip =
+      isTooltipValueType(widget.type) && String(value).length > 10
+        ? String(value)
+        : undefined
+    const tooltipConfig = ui.getTooltipConfig(widget, valueTooltip)
     const handleContextMenu = (e: PointerEvent) => {
       e.preventDefault()
       e.stopPropagation()
@@ -325,7 +385,7 @@ export function computeProcessedWidgets({
         e,
         widget.name,
         widget.nodeId !== undefined
-          ? String(stripGraphPrefix(widget.nodeId))
+          ? (stripGraphPrefix(widget.nodeId) ?? undefined)
           : undefined
       )
     }
@@ -342,8 +402,7 @@ export function computeProcessedWidgets({
         missingModelStore
       ),
       hidden: mergedOptions.hidden ?? false,
-      id: String(bareWidgetId),
-      entityId: widget.entityId,
+      widgetId: widget.widgetId,
       name: widget.name,
       renderKey,
       type: widget.type,
@@ -353,7 +412,8 @@ export function computeProcessedWidgets({
       visible,
       updateHandler,
       tooltipConfig,
-      slotMetadata
+      slotMetadata,
+      ...(bareWidgetId === null ? {} : { id: bareWidgetId })
     })
   }
 
@@ -372,7 +432,10 @@ export function useProcessedWidgets(
   const { getWidgetTooltip, createTooltipConfig } = useNodeTooltips(nodeType)
 
   const ui: WidgetUiCallbacks = {
-    getTooltipConfig: (widget) => createTooltipConfig(getWidgetTooltip(widget)),
+    getTooltipConfig: (widget, fullValue = '') =>
+      createTooltipConfig(
+        [getWidgetTooltip(widget), fullValue].join('\n\n').trim()
+      ),
     handleNodeRightClick
   }
 
