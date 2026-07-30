@@ -5,21 +5,9 @@ set -e
 : "${PORT:=80}"
 export PORT
 
-# ComfyUI backend origin for the same-origin API proxy. Defaults to the
-# comfyui-backend service over Railway private networking (IPv6, same
-# project/environment). Override with a public origin to point elsewhere.
-: "${COMFYUI_BACKEND_ORIGIN:=http://comfyui-backend.railway.internal:8188}"
-export COMFYUI_BACKEND_ORIGIN
-
-# DNS server nginx uses to resolve the backend hostname at request time.
-# Default is Railway's private-network resolver (IPv6 literals must be
-# bracketed for nginx); use 127.0.0.11 for plain Docker runs.
-: "${COMFYUI_DNS_RESOLVER:=[fd12::10]}"
-export COMFYUI_DNS_RESOLVER
-
-# Render the nginx config from the template, substituting only our variables
+# Render the nginx config from the template, substituting only ${PORT}
 # (so nginx runtime vars like $uri are preserved).
-envsubst '${PORT} ${COMFYUI_BACKEND_ORIGIN} ${COMFYUI_DNS_RESOLVER}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
+envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf
 
 # Fail fast with a clear message if the generated config is invalid.
 nginx -t
