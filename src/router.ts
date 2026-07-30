@@ -146,7 +146,7 @@ router.afterEach(() => {
 })
 
 if (isXcityApp) {
-  router.beforeEach(async (_to, _from, next) => {
+  router.beforeEach(async (to, _from, next) => {
     try {
       await getXcityIdentity()
     } catch (e) {
@@ -155,6 +155,14 @@ if (isXcityApp) {
       // down, key provisioning) falls through so /create can render and show a
       // clear error instead of a blank screen.
       if (e instanceof XcityAuthError) return next(false)
+    }
+
+    // motion.xcity.ai is a pure TokenHub media product: only the /create
+    // generator is a real surface. The upstream ComfyUI graph workspace (and
+    // its BYOK/secrets/API-key surfaces) is not backed by TokenHub, so keep it
+    // unreachable — funnel every other route to the generator.
+    if (to.name !== 'xcity-create') {
+      return next({ name: 'xcity-create' })
     }
 
     return next()
