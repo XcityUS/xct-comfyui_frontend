@@ -12,9 +12,9 @@ export PORT
 export COMFYUI_BACKEND_ORIGIN
 
 # DNS server nginx uses to resolve the backend hostname at request time.
-# Default is Railway's private-network resolver; use 127.0.0.11 for plain
-# Docker runs.
-: "${COMFYUI_DNS_RESOLVER:=fd12::10}"
+# Default is Railway's private-network resolver (IPv6 literals must be
+# bracketed for nginx); use 127.0.0.11 for plain Docker runs.
+: "${COMFYUI_DNS_RESOLVER:=[fd12::10]}"
 export COMFYUI_DNS_RESOLVER
 
 # Render the nginx config from the template, substituting only our variables
