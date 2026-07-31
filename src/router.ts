@@ -8,7 +8,7 @@ import {
 import type { RouteLocationNormalized } from 'vue-router'
 
 import { useFeatureFlags } from '@/composables/useFeatureFlags'
-import { isXcityApp } from '@/config/xcity'
+import { getXcityHomeUrl, isXcityApp } from '@/config/xcity'
 import { isCloud, isDesktop } from '@/platform/distribution/types'
 import { useTelemetry } from '@/platform/telemetry'
 import {
@@ -62,16 +62,6 @@ const router = createRouter({
       createWebHistory(basePath),
   routes: [
     ...(isCloud ? cloudOnboardingRoutes : []),
-    ...(isXcityApp
-      ? [
-          {
-            path: '/create',
-            name: 'xcity-create',
-            component: () =>
-              import('@/platform/xcity/views/MediaGeneratorView.vue')
-          }
-        ]
-      : []),
     {
       path: '/',
       component: LayoutDefault,
@@ -146,23 +136,22 @@ router.afterEach(() => {
 })
 
 if (isXcityApp) {
-  router.beforeEach(async (to, _from, next) => {
+  router.beforeEach(async (_to, _from, next) => {
     try {
       await getXcityIdentity()
     } catch (e) {
-      // Not signed in: getXcityIdentity is redirecting the browser to
-      // xcity-home login. Halt this navigation. Any other failure (service
-      // down, key provisioning) falls through so /create can render and show a
-      // clear error instead of a blank screen.
-      if (e instanceof XcityAuthError) return next(false)
-    }
-
-    // motion.xcity.ai is a pure TokenHub media product: only the /create
-    // generator is a real surface. The upstream ComfyUI graph workspace (and
-    // its BYOK/secrets/API-key surfaces) is not backed by TokenHub, so keep it
-    // unreachable — funnel every other route to the generator.
-    if (to.name !== 'xcity-create') {
-      return next({ name: 'xcity-create' })
+      // Fail closed: the xcity login gate is the only access control on this
+      // deployment, so any identity failure sends the user to xcity-home
+      // login. On 401 getXcityIdentity has already started that redirect;
+      // for service errors (identity endpoint unreachable, key provisioning)
+      // we start it here rather than letting an unauthenticated session
+      // through to the workspace.
+      if (!(e instanceof XcityAuthError)) {
+        window.location.assign(
+          `${getXcityHomeUrl()}/login?return=${encodeURIComponent(window.location.href)}`
+        )
+      }
+      return next(false)
     }
 
     return next()
